@@ -1,0 +1,1 @@
+from .maggic import MAGGIC
