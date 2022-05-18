@@ -13,8 +13,8 @@ np.random.seed(22)
 
 
 def data_loader(name='housing'):
-    if name=='maggic':
-        X = pd.read_csv('MAGGIC_NIPS.csv').to_numpy()[:,1:-1]
+    if name=='healthcare':
+        X = pd.read_csv('healthcare.csv').to_numpy()[:,1:-1]
 #np.random.multivariate_normal([0],[[1]], n_M)*std1 # non-training data
     elif name=='housing':
         X = fetch_california_housing().data
@@ -197,7 +197,7 @@ def main(name='housing'):
     X_G = p_G.resample(n_G).transpose(1,0)
     
     # make binary again
-    if name == 'maggic':
+    if name == 'healthcare':
         for i in range( X_all.shape[1]):
             if len(np.unique(X_all[:,i]))<=2:
                 X_G[:,i] = np.round(X_G[:,i])

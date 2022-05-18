@@ -1,6 +1,6 @@
 import numpy as np
 
-class MAGGIC:
+class HEALTHCARE:
 
     class Data:
 
@@ -12,7 +12,7 @@ class MAGGIC:
     def __init__(self, root):
 
         self.root = root
-        file = 'bnaf/datafolder/maggic/maggic.npy'
+        file = 'bnaf/datafolder/healthcare/healthcare.npy'
         train, val, test = load_data_normalised(file)
 
         self.train = self.Data(train)

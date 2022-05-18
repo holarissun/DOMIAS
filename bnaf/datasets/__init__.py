@@ -1,1 +1,1 @@
-from .maggic import MAGGIC
+from .healthcare import HEALTHCARE

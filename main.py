@@ -26,7 +26,7 @@ parser.add_argument(
     "--dataset",
     type=str,
     default="housing",
-    choices=["MAGGIC","housing","synthetic"],
+    choices=["healthcare","housing","synthetic"],
 )
 parser.add_argument("--learning_rate", type=float, default=1e-2)
 parser.add_argument("--batch_dim", type=int, default=50)
@@ -59,7 +59,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 if args.gan_method not in ["TVAE", "KDE", "CTGAN"]:
     from synthcity.plugins import Plugins
 from bnaf.bnaf_den_est import *
-from baselines_stable import *
+from baselines import *
 from bnaf.datasets import *
 import numpy as np
 import pandas as pd
@@ -124,8 +124,8 @@ def exp_main(args, orig_data_frame):
 performance_logger = {}
 
 ''' 1. load dataset'''
-if args.dataset == "MAGGIC":
-    dataset = MAGGIC('')
+if args.dataset == "healthcare":
+    dataset = HEALTHCARE('')
     dataset = np.vstack((dataset.train.x, dataset.val.x, dataset.test.x))
     np.random.shuffle(dataset)
     print('dataset size,', dataset.shape)
