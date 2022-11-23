@@ -6,6 +6,11 @@ running:
 python3 domias_main.py --seed 0 --gpu_idx 0 --flows 5 --gan_method TVAE --dataset housing --training_size_list 30 50 100 300 500 1000 --held_out_size_list 10000 --gen_size_list 10000 --training_epoch_list 2000
 ```
 
+or equivalently, run 
+```python
+bash run_tabular.sh
+```
+
 2. if using prior knowledge (i.e., no reference dataset setting), add
 ```python
 --density_estimator prior
