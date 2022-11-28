@@ -2,11 +2,11 @@
 
 1. **Experiments main paper**
 
-To reproduce our results and evaluate eqn.1 and eqn.2 on specified dataset, run
+To reproduce results for DOMIAS, baselines, and ablated models, run
 ```python
 python3 domias_main.py --seed 0 --gpu_idx 0 --flows 5 --gan_method TVAE --dataset housing --training_size_list 30 50 100 300 500 1000 --held_out_size_list 10000 --gen_size_list 10000 --training_epoch_list 2000
 ```
-changing arguments training_size_list, held_out_size_list, gen_size_list, and training_epoch_list for specific experiments over ranges (Experiments 5.1 and 5.2) and gan_method for generative model of interest.
+changing arguments training_size_list, held_out_size_list, gen_size_list, and training_epoch_list for specific experiments over ranges (Experiments 5.1 and 5.2, see Appendix A for details) and gan_method for generative model of interest.
 
 or equivalently, run 
 ```python
