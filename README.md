@@ -1,6 +1,7 @@
 # Code for DOMIAS
 
-1. Experiments main paper
+1. **Experiments main paper**
+
 To reproduce our results and evaluate eqn.1 and eqn.2 on specified dataset, run
 ```python
 python3 domias_main.py --seed 0 --gpu_idx 0 --flows 5 --gan_method TVAE --dataset housing --training_size_list 30 50 100 300 500 1000 --held_out_size_list 10000 --gen_size_list 10000 --training_epoch_list 2000
@@ -12,13 +13,15 @@ or equivalently, run
 bash run_tabular.sh
 ```
 
-2. Experiments Appendix D
+2. **Experiments no prior knowledge (Appendix D)**
+
 If using prior knowledge (i.e., no reference dataset setting), add
 ```python
 --density_estimator prior
 ```
 
-3. Experiment Appendix B.3
+3. **Experiment images (Appendix B.3)**
+
 To run experiment with the CelebA dataset, first run 
 ```python
 python3 celeba_gen.py --gpu_idx 0 --seed 0 --training_size 4000
