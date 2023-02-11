@@ -127,3 +127,11 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+synth_folder
+workspace
+logs
+temp_debug*
+*.bkp
+debug*
+data
+celebA_representation
