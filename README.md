@@ -3,14 +3,14 @@
 <div align="center">
 
 [![Tests Python](https://github.com/vanderschaarlab/DOMIAS/actions/workflows/test.yml/badge.svg)](https://github.com/vanderschaarlab/DOMIAS/actions/workflows/test.yml)
-[![](https://pepy.tech/badge/DOMIAS)](https://pypi.org/project/synthcity/)
+[![](https://pepy.tech/badge/domias)](https://pypi.org/project/domias/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/vanderschaarlab/DOMIAS/blob/main/LICENSE)
 [![Python 3.7+](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/release/python-370/)
 [![about](https://img.shields.io/badge/about-The%20van%20der%20Schaar%20Lab-blue)](https://www.vanderschaar-lab.com/)
 
 </div>
 
-## :rocket: Installation
+## Installation
 
 The library can be installed from PyPI using
 ```bash
@@ -56,7 +56,7 @@ and then
 ```python
 cd experiments && python3 celeba_eval.py --seed 0 --training_size 4000
 ```
-## :hammer: Tests
+## Tests
 
 Install the testing dependencies using
 ```bash
