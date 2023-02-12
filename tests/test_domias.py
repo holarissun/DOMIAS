@@ -63,6 +63,9 @@ def get_generator(
             self.model = syn_model
 
         def fit(self, data: pd.DataFrame) -> "LocalGenerator":
+            self.lower = data.min().min()
+            self.upper = data.max().max()
+
             if self.method == "KDE":
                 self.model = stats.gaussian_kde(np.transpose(data))
             else:
@@ -89,35 +92,52 @@ def get_generator(
 @pytest.mark.parametrize("method", ["TVAE", "CTGAN", "KDE"])
 @pytest.mark.parametrize("training_size", [30])
 @pytest.mark.parametrize("held_out_size", [30])
-@pytest.mark.parametrize("training_epoch", [100])
+@pytest.mark.parametrize("training_epochs", [100])
 @pytest.mark.parametrize("density_estimator", ["prior", "kde", "bnaf"])
 def test_sanity(
     dataset_name: str,
     method: str,
     training_size: int,
     held_out_size: int,
-    training_epoch: int,
+    training_epochs: int,
     density_estimator: str,
 ) -> None:
     dataset = get_dataset(dataset_name)
-    print(dataset)
 
     generator = get_generator(
         gan_method=method,
-        epochs=training_epoch,
+        epochs=training_epochs,
     )
     perf = evaluate_performance(
         generator,
         dataset,
         training_size,
         held_out_size,
-        training_epoch,
-        gen_size_list=[100],
+        training_epochs=training_epochs,
+        synthetic_sizes=[100],
         density_estimator=density_estimator,
     )
-    print(
-        f"""
-            SIZE_PARAM = {training_size} ADDITION_SIZE  = {held_out_size} TRAINING_EPOCH = {training_epoch}
-                metrics = {perf}
-        """
-    )
+
+    assert 100 in perf
+    results = perf[100]
+
+    assert "MIA_performance" in results
+    assert "MIA_scores" in results
+
+    tests = [
+        "baseline_eq1",
+        "baseline_eq2",
+        "hayes_torch",
+        "hilprecht",
+        "gan_leaks",
+        "gan_leaks_cal",
+        "hayes_gan",
+        "eq1",
+        "domias",
+    ]
+
+    for key in tests:
+        assert key in results["MIA_performance"]
+        assert key in results["MIA_scores"]
+        assert "accuracy" in results["MIA_performance"][key]
+        assert "aucroc" in results["MIA_performance"][key]

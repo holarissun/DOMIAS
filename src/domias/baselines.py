@@ -3,7 +3,6 @@ from typing import Optional, Tuple
 
 # third party
 import numpy as np
-import pandas as pd
 import torch
 import torch.nn.functional as F
 from scipy import stats
@@ -32,6 +31,7 @@ def GAN_leaks(X_test: np.ndarray, X_G: np.ndarray) -> np.ndarray:
     scores = np.zeros(X_test.shape[0])
     for i, x in enumerate(X_test):
         scores[i] = np.exp(-d_min(x, X_G))
+        assert not np.isinf(scores[i]), f"Found inf: -d_min = {-d_min(x, X_G)}"
     return scores
 
 
@@ -42,6 +42,10 @@ def GAN_leaks_cal(X_test: np.ndarray, X_G: np.ndarray, X_ref: np.ndarray) -> np.
     scores = np.zeros(X_test.shape[0])
     for i, x in enumerate(X_test):
         scores[i] = np.exp(-d_min(x, X_G) + d_min(x, X_ref))
+
+        assert not np.isinf(
+            scores[i]
+        ), f"Found inf: -d_min(x, X_G) = {-d_min(x, X_G)} d_min(x, X_ref) = {d_min(x, X_ref)}"
     return scores
 
 
@@ -57,7 +61,6 @@ def hayes(X_test: np.ndarray, X_G: np.ndarray, X_ref: np.ndarray) -> np.ndarray:
         np.vstack([X_G[:num], X_ref[:num]]),
         np.concatenate([np.ones(num), np.zeros(num)]),
     )
-    #                                                           np.zeros(X_ref.shape[0])]))
     return clf.predict_proba(X_test)[:, 1]
 
 
@@ -91,7 +94,7 @@ def hayes_torch(X_test: np.ndarray, X_G: np.ndarray, X_ref: np.ndarray) -> np.nd
     all_y = torch.as_tensor(all_y).long().to(DEVICE)
     X_test = torch.as_tensor(X_test).float().to(DEVICE)
     for training_iter in range(int(300 * len(X_test) / batch_size)):
-        rnd_idx = np.random.choice(len(X_test), batch_size)
+        rnd_idx = np.random.choice(num, batch_size)
         train_x, train_y = all_x[rnd_idx], all_y[rnd_idx]
         clf_out = clf(train_x)
         loss = loss_func(clf_out, train_y)
@@ -136,8 +139,6 @@ def kde_baseline(
 def compute_metrics_baseline(
     y_scores: np.ndarray, y_true: np.ndarray, sample_weight: Optional[np.ndarray] = None
 ) -> Tuple[float, float]:
-    # if len(np.unique(y_scores))<=2: # we don't want binarized scores
-    #    raise ValueError('y_scores should contain non-binarized values, but only contains', np.unique(y_scores))
     y_pred = y_scores > np.median(y_scores)
     acc = accuracy_score(y_true, y_pred, sample_weight=sample_weight)
     auc = roc_auc_score(y_true, y_scores, sample_weight=sample_weight)
@@ -151,23 +152,20 @@ def baselines(
     X_ref: np.ndarray,
     X_ref_GLC: np.ndarray,
     sample_weight: Optional[np.ndarray] = None,
-) -> Tuple[pd.DataFrame, dict]:
+) -> Tuple[dict, dict]:
     score = {}
-    score["Eq. 1"], score["Eq. 2"] = kde_baseline(X_test, X_G, X_ref)
+    score["baseline_eq1"], score["baseline_eq2"] = kde_baseline(X_test, X_G, X_ref)
     score["hayes_torch"] = hayes_torch(X_test, X_G, X_ref)
     score["hilprecht"] = hilprecht(X_test, X_G)
-    score["GAN-leaks"] = GAN_leaks(X_test, X_G)
-    score["GAN-leaks_cal"] = GAN_leaks_cal(X_test, X_G, X_ref_GLC)
-    results = pd.DataFrame(columns=["name", "acc", "auc"])
+    score["gan_leaks"] = GAN_leaks(X_test, X_G)
+    score["gan_leaks_cal"] = GAN_leaks_cal(X_test, X_G, X_ref_GLC)
+    results = {}
     for name, y_scores in score.items():
-        try:
-            acc, auc = compute_metrics_baseline(
-                y_scores, Y_test, sample_weight=sample_weight
-            )
-            results = pd.concat(
-                [results, pd.DataFrame({"name": name, "acc": acc, "auc": auc})],
-                ignore_index=True,
-            )
-        except BaseException:
-            np.save("temp_debug_scores", y_scores)
+        acc, auc = compute_metrics_baseline(
+            y_scores, Y_test, sample_weight=sample_weight
+        )
+        results[name] = {
+            "accuracy": acc,
+            "aucroc": auc,
+        }
     return results, score

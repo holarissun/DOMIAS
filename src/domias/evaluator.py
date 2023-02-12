@@ -2,7 +2,6 @@
 from __future__ import absolute_import, division, print_function
 
 # stdlib
-from pathlib import Path
 from typing import Any, Dict, Optional
 
 # third party
@@ -70,21 +69,68 @@ class normal_func_feat:
 def evaluate_performance(
     generator: GeneratorInterface,
     dataset: np.ndarray,
-    SIZE_PARAM: int,
-    ADDITION_SIZE: int,
-    TRAINING_EPOCH: int,
+    training_size: int,
+    held_out_size: int,
+    training_epochs: int = 2000,
+    synthetic_sizes: list = [10000],
+    density_estimator: str = "prior",
+    seed: int = 0,
+    device: Any = DEVICE,
     shifted_column: Optional[int] = None,
     zero_quantile: float = 0.3,
-    density_estimator: str = "prior",
-    gen_size_list: list = [10000],
     reference_kept_p: float = 1.0,
-    seed: int = 0,
-    workspace: Path = Path("workspace"),
-    device: Any = DEVICE,
 ) -> Dict:
-    performance_logger: Dict = {}
+    """
+    Evaluate various Membership Inference Attacks, using the `generator` and the `dataset`.
+    The provided generator must not be fitted.
 
-    workspace.mkdir(parents=True, exist_ok=True)
+    Args:
+        generator: GeneratorInterface
+            Generator with the `fit` and `generate` methods. The generator MUST not be fitted.
+        dataset: int
+            The evaluation dataset, used to derive the training and test datasets.
+        training_size: int
+            The split for the training dataset out of `dataset`
+        held_out_size: int
+            The split for the held-out(addition) dataset out of `dataset`.
+        training_epochs: int
+            Training epochs
+        synthetic_sizes: List[int]
+            For how many synthetic samples to test the attacks.
+        density_estimator: str, default = "prior"
+            Which density to use. Available options:
+                * prior
+                * bnaf
+                * kde
+        seed: int
+            Random seed
+        device: PyTorch device
+            CPU or CUDA
+        shifted_column: Optional[int]
+            Shift a column
+        zero_quantile: float
+            Threshold for shifting the column.
+        reference_kept_p: float
+            Held-out dataset parameter
+
+    Returns:
+        A dictionary with a key for each of the `synthetic_sizes` values.
+        For each `synthetic_sizes` value, the dictionary contains the keys:
+            * `MIA_performance` : accuracy and AUCROC for each attack
+            * `MIA_scores`: output scores for each attack
+            * `data`: the evaluation data
+        For both `MIA_performance` and `MIA_scores`, the following attacks are evaluated:
+            * "baseline_eq1"
+            * "baseline_eq2"
+            * "hayes_torch"
+            * "hilprecht"
+            * "gan_leaks"
+            * "gan_leaks_cal"
+            * "hayes_gan"
+            * "eq1"
+            * "domias"
+    """
+    performance_logger: Dict = {}
 
     continuous = []
     for i in np.arange(dataset.shape[1]):
@@ -102,17 +148,13 @@ def evaluate_performance(
         dataset[:, shifted_column][dataset[:, shifted_column] == -999.0] = 0.0
         dataset[:, shifted_column][dataset[:, shifted_column] == 999.0] = 1.0
 
-        training_set = dataset[:SIZE_PARAM]
-        print(
-            "training data (D_mem) without A=0",
-            training_set[training_set[:, shifted_column] == 1].shape,
-        )
+        training_set = dataset[:training_size]
         training_set = training_set[training_set[:, shifted_column] == 1]
 
-        test_set = dataset[SIZE_PARAM : 2 * SIZE_PARAM]
+        test_set = dataset[training_size : 2 * training_size]
         test_set = test_set[: len(training_set)]
-        addition_set = dataset[-ADDITION_SIZE:]
-        addition_set2 = dataset[-2 * ADDITION_SIZE : -ADDITION_SIZE]
+        addition_set = dataset[-held_out_size:]
+        addition_set2 = dataset[-2 * held_out_size : -held_out_size]
 
         addition_set_A1 = addition_set[addition_set[:, shifted_column] == 1]
         addition_set_A0 = addition_set[addition_set[:, shifted_column] == 0]
@@ -132,8 +174,8 @@ def evaluate_performance(
             addition_set2 = addition_set2_A1
             # test_set = test_set_A1
 
-        SIZE_PARAM = len(training_set)
-        ADDITION_SIZE = len(addition_set)
+        training_size = len(training_set)
+        held_out_size = len(addition_set)
 
         # hide column A
         training_set = np.delete(training_set, shifted_column, 1)
@@ -142,59 +184,44 @@ def evaluate_performance(
         addition_set2 = np.delete(addition_set2, shifted_column, 1)
         dataset = np.delete(dataset, shifted_column, 1)
     else:
-        training_set = dataset[:SIZE_PARAM]
-        test_set = dataset[SIZE_PARAM : 2 * SIZE_PARAM]
-        addition_set = dataset[-ADDITION_SIZE:]
-        addition_set2 = dataset[-2 * ADDITION_SIZE : -ADDITION_SIZE]
-    performance_logger[f"{SIZE_PARAM}_{TRAINING_EPOCH}_{ADDITION_SIZE}"] = {}
-    """ 3. Synthesis with TVAE"""
+        training_set = dataset[:training_size]
+        test_set = dataset[training_size : 2 * training_size]
+        addition_set = dataset[-held_out_size:]
+        addition_set2 = dataset[-2 * held_out_size : -held_out_size]
+
+    """ 3. Synthesis with the GeneratorInferface"""
     df = pd.DataFrame(training_set)
     df.columns = [str(_) for _ in range(dataset.shape[1])]
 
     # Train generator
-    print("Train generator")
     generator.fit(df)
 
-    for N_DATA_GEN in gen_size_list:
-        print("Sampling from the generator", N_DATA_GEN)
-        samples = generator.generate(N_DATA_GEN)
-        samples_val = generator.generate(N_DATA_GEN)
+    for synthetic_size in synthetic_sizes:
+        performance_logger[synthetic_size] = {
+            "MIA_performance": {},
+            "MIA_scores": {},
+            "data": {},
+        }
+        samples = generator.generate(synthetic_size)
+        samples_val = generator.generate(synthetic_size)
 
         wd_n = min(len(samples), len(addition_set))
         eval_met_on_held_out = compute_wd(samples[:wd_n], addition_set[:wd_n])
-        performance_logger[f"{SIZE_PARAM}_{TRAINING_EPOCH}_{ADDITION_SIZE}"][
-            f"{N_DATA_GEN}_evaluation"
+        performance_logger[synthetic_size]["MIA_performance"][
+            "sample_quality"
         ] = eval_met_on_held_out
-        print(
-            "SIZE: ",
-            SIZE_PARAM,
-            "TVAE EPOCH: ",
-            TRAINING_EPOCH,
-            "N_DATA_GEN: ",
-            N_DATA_GEN,
-            "ADDITION_SIZE: ",
-            ADDITION_SIZE,
-            "Performance (Sample-Quality): ",
-            eval_met_on_held_out,
-        )
-
-        np.save(workspace / f"{seed}_synth_samples", samples)
-        np.save(workspace / f"{seed}_training_set", training_set)
-        np.save(workspace / f"{seed}_test_set", test_set)
-        np.save(workspace / f"{seed}_ref_set1", addition_set)
-        np.save(workspace / f"{seed}_ref_set2", addition_set2)
 
         """ 4. density estimation / evaluation of Eqn.(1) & Eqn.(2)"""
         if density_estimator == "bnaf":
             _gen, model_gen = density_estimator_trainer(
                 samples.values,
-                samples_val.values[: int(0.5 * N_DATA_GEN)],
-                samples_val.values[int(0.5 * N_DATA_GEN) :],
+                samples_val.values[: int(0.5 * synthetic_size)],
+                samples_val.values[int(0.5 * synthetic_size) :],
             )
             _data, model_data = density_estimator_trainer(
                 addition_set,
-                addition_set2[: int(0.5 * ADDITION_SIZE)],
-                addition_set2[: int(0.5 * ADDITION_SIZE)],
+                addition_set2[: int(0.5 * held_out_size)],
+                addition_set2[: int(0.5 * held_out_size)],
             )
             p_G_train = (
                 compute_log_p_x(
@@ -225,14 +252,33 @@ def evaluate_performance(
         Y_test_4baseline = np.concatenate(
             [np.ones(training_set.shape[0]), np.zeros(test_set.shape[0])]
         ).astype(bool)
+
+        performance_logger[synthetic_size]["data"]["Xtest"] = X_test_4baseline
+        performance_logger[synthetic_size]["data"]["Ytest"] = Y_test_4baseline
+
         # build another GAN for hayes and GAN_leak_cal
-        ctgan = CTGAN(epochs=TRAINING_EPOCH, pac=1)
+        ctgan = CTGAN(epochs=training_epochs, pac=1)
         samples.columns = [str(_) for _ in range(dataset.shape[1])]
         ctgan.fit(samples)  # train a CTGAN on the generated examples
 
         if ctgan._transformer is None or ctgan._discriminator is None:
             raise RuntimeError()
 
+        # Baselines
+        X_ref_GLC = ctgan.generate(addition_set.shape[0])
+
+        baseline_results, baseline_scores = baselines(
+            X_test_4baseline,
+            Y_test_4baseline,
+            samples.values,
+            addition_set,
+            X_ref_GLC,
+        )
+
+        performance_logger[synthetic_size]["MIA_performance"] = baseline_results
+        performance_logger[synthetic_size]["MIA_scores"] = baseline_scores
+
+        # Hayes GAN
         ctgan_representation = ctgan._transformer.transform(X_test_4baseline)
         ctgan_score = (
             ctgan._discriminator(
@@ -245,31 +291,11 @@ def evaluate_performance(
 
         acc, auc = compute_metrics_baseline(ctgan_score, Y_test_4baseline)
 
-        X_ref_GLC = ctgan.generate(addition_set.shape[0])
-
-        baseline_results, baseline_scores = baselines(
-            X_test_4baseline,
-            Y_test_4baseline,
-            samples.values,
-            addition_set,
-            X_ref_GLC,
-        )
-        baseline_results = baseline_results.append(
-            {"name": "hayes", "acc": acc, "auc": auc}, ignore_index=True
-        )
-        baseline_scores["hayes"] = ctgan_score
-        performance_logger[f"{SIZE_PARAM}_{TRAINING_EPOCH}_{ADDITION_SIZE}"][
-            f"{N_DATA_GEN}_Baselines"
-        ] = baseline_results
-        performance_logger[f"{SIZE_PARAM}_{TRAINING_EPOCH}_{ADDITION_SIZE}"][
-            f"{N_DATA_GEN}_BaselineScore"
-        ] = baseline_scores
-        performance_logger[f"{SIZE_PARAM}_{TRAINING_EPOCH}_{ADDITION_SIZE}"][
-            f"{N_DATA_GEN}_Xtest"
-        ] = X_test_4baseline
-        performance_logger[f"{SIZE_PARAM}_{TRAINING_EPOCH}_{ADDITION_SIZE}"][
-            f"{N_DATA_GEN}_Ytest"
-        ] = Y_test_4baseline
+        performance_logger[synthetic_size]["MIA_performance"]["hayes_gan"] = {
+            "accuracy": acc,
+            "aucroc": auc,
+        }
+        performance_logger[synthetic_size]["MIA_scores"]["hayes_gan"] = ctgan_score
 
         # eqn1: \prop P_G(x_i)
         log_p_test = np.concatenate([p_G_train, p_G_test])
@@ -283,20 +309,12 @@ def evaluate_performance(
         fpr, tpr, thresholds = metrics.roc_curve(auc_y, log_p_test, pos_label=1)
         auc = metrics.auc(fpr, tpr)
 
-        print(
-            "Eqn.(1), training set prediction acc",
-            (p_G_train > thres).sum(0) / SIZE_PARAM,
-        )
-        print("Eqn.(1), AUC", auc)
-        performance_logger[f"{SIZE_PARAM}_{TRAINING_EPOCH}_{ADDITION_SIZE}"][
-            f"{N_DATA_GEN}_Eqn1"
-        ] = (p_G_train > thres).sum(0) / SIZE_PARAM
-        performance_logger[f"{SIZE_PARAM}_{TRAINING_EPOCH}_{ADDITION_SIZE}"][
-            f"{N_DATA_GEN}_Eqn1AUC"
-        ] = auc
-        performance_logger[f"{SIZE_PARAM}_{TRAINING_EPOCH}_{ADDITION_SIZE}"][
-            f"{N_DATA_GEN}_Eqn1Score"
-        ] = log_p_test
+        performance_logger[synthetic_size]["MIA_performance"]["eq1"] = {
+            "accuracy": (p_G_train > thres).sum(0) / training_size,
+            "aucroc": auc,
+        }
+        performance_logger[synthetic_size]["MIA_scores"]["eq1"] = log_p_test
+
         # eqn2: \prop P_G(x_i)/P_X(x_i)
         if density_estimator == "bnaf":
             p_R_train = (
@@ -335,38 +353,19 @@ def evaluate_performance(
         fpr, tpr, thresholds = metrics.roc_curve(auc_y, log_p_rel, pos_label=1)
         auc = metrics.auc(fpr, tpr)
         if density_estimator == "bnaf":
-            print(
-                "Eqn.(2), training set prediction acc",
-                (p_G_train - p_R_train >= thres).sum(0) / SIZE_PARAM,
-            )
-            print("Eqn.(2), AUC", auc)
-            performance_logger[f"{SIZE_PARAM}_{TRAINING_EPOCH}_{ADDITION_SIZE}"][
-                f"{N_DATA_GEN}_Eqn2"
-            ] = (p_G_train - p_R_train > thres).sum(0) / SIZE_PARAM
+            performance_logger[synthetic_size]["MIA_performance"]["domias"] = {
+                "accuracy": (p_G_train - p_R_train > thres).sum(0) / training_size,
+            }
         elif density_estimator == "kde":
-            print(
-                "Eqn.(2), training set prediction acc",
-                (p_G_train / p_R_train >= thres).sum(0) / SIZE_PARAM,
-            )
-            print("Eqn.(2), AUC", auc)
-            performance_logger[f"{SIZE_PARAM}_{TRAINING_EPOCH}_{ADDITION_SIZE}"][
-                f"{N_DATA_GEN}_Eqn2"
-            ] = (p_G_train / p_R_train > thres).sum(0) / SIZE_PARAM
+            performance_logger[synthetic_size]["MIA_performance"]["domias"] = {
+                "accuracy": (p_G_train / p_R_train > thres).sum(0) / training_size
+            }
         elif density_estimator == "prior":
-            print(
-                "Eqn.(2), training set prediction acc",
-                (p_G_train / p_R_train >= thres).sum(0) / SIZE_PARAM,
-            )
-            print("Eqn.(2), AUC", auc)
-            performance_logger[f"{SIZE_PARAM}_{TRAINING_EPOCH}_{ADDITION_SIZE}"][
-                f"{N_DATA_GEN}_Eqn2"
-            ] = (p_G_train / p_R_train > thres).sum(0) / SIZE_PARAM
+            performance_logger[synthetic_size]["MIA_performance"]["domias"] = {
+                "accuracy": (p_G_train / p_R_train > thres).sum(0) / training_size
+            }
 
-        performance_logger[f"{SIZE_PARAM}_{TRAINING_EPOCH}_{ADDITION_SIZE}"][
-            f"{N_DATA_GEN}_Eqn2AUC"
-        ] = auc
-        performance_logger[f"{SIZE_PARAM}_{TRAINING_EPOCH}_{ADDITION_SIZE}"][
-            f"{N_DATA_GEN}_Eqn2Score"
-        ] = log_p_rel
+        performance_logger[synthetic_size]["MIA_performance"]["domias"]["aucroc"] = auc
+        performance_logger[synthetic_size]["MIA_scores"]["domias"] = log_p_rel
 
     return performance_logger
