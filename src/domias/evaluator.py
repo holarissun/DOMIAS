@@ -265,13 +265,13 @@ def evaluate_performance(
             raise RuntimeError()
 
         # Baselines
-        
+
         baseline_results, baseline_scores = baselines(
             X_test_4baseline,
             Y_test_4baseline,
             samples.values,
             addition_set,
-            addition_set, # we pass the reference dataset to GAN-leaks CAL for better stability and fairer comparison.
+            addition_set,  # we pass the reference dataset to GAN-leaks CAL for better stability and fairer comparison.
         )
 
         performance_logger[synthetic_size]["MIA_performance"] = baseline_results
