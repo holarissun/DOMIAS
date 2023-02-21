@@ -1,3 +1,5 @@
+# from BNAF (De Cao et al., 2018), https://github.com/nicola-decao/BNAF
+
 # stdlib
 import math
 from typing import Any, Optional, Tuple, Union

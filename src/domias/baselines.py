@@ -49,22 +49,8 @@ def GAN_leaks_cal(X_test: np.ndarray, X_G: np.ndarray, X_ref: np.ndarray) -> np.
     return scores
 
 
-def hayes(X_test: np.ndarray, X_G: np.ndarray, X_ref: np.ndarray) -> np.ndarray:
-    num = min(X_G.shape[0], X_ref.shape[0])
-    # can use auxiliary data model, i.e. already implemented
-    # they show it doesn't work well
-    # full black box uses GAN.
-    # naive classifier trained on generative and real data
-    clf = MLPClassifier(
-        hidden_layer_sizes=(64, 64, 64), random_state=1, max_iter=1000
-    ).fit(
-        np.vstack([X_G[:num], X_ref[:num]]),
-        np.concatenate([np.ones(num), np.zeros(num)]),
-    )
-    return clf.predict_proba(X_test)[:, 1]
 
-
-def hayes_torch(X_test: np.ndarray, X_G: np.ndarray, X_ref: np.ndarray) -> np.ndarray:
+def LOGAN_D1(X_test: np.ndarray, X_G: np.ndarray, X_ref: np.ndarray) -> np.ndarray:
     num = min(X_G.shape[0], X_ref.shape[0])
 
     class Net(torch.nn.Module):
@@ -106,7 +92,7 @@ def hayes_torch(X_test: np.ndarray, X_G: np.ndarray, X_ref: np.ndarray) -> np.nd
     return return_out
 
 
-def hilprecht(X_test: np.ndarray, X_G: np.ndarray) -> np.ndarray:
+def MC(X_test: np.ndarray, X_G: np.ndarray) -> np.ndarray:
     scores = np.zeros(X_test.shape[0])
     distances = np.zeros((X_test.shape[0], X_G.shape[0]))
     for i, x in enumerate(X_test):
@@ -155,8 +141,8 @@ def baselines(
 ) -> Tuple[dict, dict]:
     score = {}
     score["baseline_eq1"], score["baseline_eq2"] = kde_baseline(X_test, X_G, X_ref)
-    score["hayes_torch"] = hayes_torch(X_test, X_G, X_ref)
-    score["hilprecht"] = hilprecht(X_test, X_G)
+    score["LOGAN_D1"] = LOGAN_D1(X_test, X_G, X_ref)
+    score["MC"] = MC(X_test, X_G)
     score["gan_leaks"] = GAN_leaks(X_test, X_G)
     score["gan_leaks_cal"] = GAN_leaks_cal(X_test, X_G, X_ref_GLC)
     results = {}
