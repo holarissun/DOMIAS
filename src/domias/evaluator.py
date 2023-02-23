@@ -211,9 +211,7 @@ def evaluate_performance(
                 samples_val.values[int(0.5 * synthetic_size) :],
             )
             _data, model_data = density_estimator_trainer(
-                reference_set,
-                addition_set[: int(0.5 * held_out_size)],
-                addition_set[: int(0.5 * held_out_size)],
+                reference_set
             )
             p_G_train = (
                 compute_log_p_x(
