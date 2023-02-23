@@ -7,7 +7,6 @@ import torch
 import torch.nn.functional as F
 from scipy import stats
 from sklearn.metrics import accuracy_score, roc_auc_score
-from sklearn.neural_network import MLPClassifier
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
