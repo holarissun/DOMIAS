@@ -88,7 +88,7 @@ training_set = np.load(
 test_set = np.load(
     f"{PATH_CELEB_REPRESENTATION}/AISTATS_betavae_repres_test_{alias}.npy"
 )[: 999 + args.training_size - 1000]
-addition_set = np.load(
+reference_set = np.load(
     f"{PATH_CELEB_REPRESENTATION}/AISTATS_betavae_repres_ref_{alias}.npy"
 )[:4500]
 addition_set2 = np.load(
@@ -113,8 +113,8 @@ for training_size in args.training_size_list:
                         f"{PATH_CELEB_REPRESENTATION}/AISTATS_betavae_repres_synth_{alias}.npy"
                     )[N_DATA_GEN : N_DATA_GEN * 2]
                 )
-            wd_n = min(len(samples), len(addition_set))
-            eval_met_on_held_out = compute_wd(samples[:wd_n], addition_set[:wd_n])
+            wd_n = min(len(samples), len(reference_set))
+            eval_met_on_held_out = compute_wd(samples[:wd_n], reference_set[:wd_n])
             performance_logger[f"{training_size}_{training_epochs}_{held_out_size}"][
                 f"{N_DATA_GEN}_evaluation"
             ] = eval_met_on_held_out
@@ -139,7 +139,7 @@ for training_size in args.training_size_list:
                     samples_val.values[int(0.5 * N_DATA_GEN) :],
                 )
                 _data, model_data = density_estimator_trainer(
-                    addition_set,
+                    reference_set,
                     addition_set2[: int(0.5 * held_out_size)],
                     addition_set2[: int(0.5 * held_out_size)],
                 )
@@ -161,7 +161,7 @@ for training_size in args.training_size_list:
                 )
             elif args.density_estimator == "kde":
                 density_gen = stats.gaussian_kde(samples.values.transpose(1, 0))
-                density_data = stats.gaussian_kde(addition_set.transpose(1, 0))
+                density_data = stats.gaussian_kde(reference_set.transpose(1, 0))
                 p_G_train = density_gen(training_set.transpose(1, 0))
                 p_G_test = density_gen(test_set.transpose(1, 0))
 
@@ -169,7 +169,7 @@ for training_size in args.training_size_list:
             Y_test_4baseline = np.concatenate(
                 [np.ones(training_set.shape[0]), np.zeros(test_set.shape[0])]
             ).astype(bool)
-            # build another GAN for hayes and GAN_leak_cal
+            # build another GAN for LOGAN 0
             ctgan = CTGAN(epochs=200)
             samples.columns = [str(_) for _ in range(training_set.shape[1])]
             ctgan.fit(samples)  # train a CTGAN on the generated examples
@@ -189,17 +189,16 @@ for training_size in args.training_size_list:
 
             acc, auc = compute_metrics_baseline(ctgan_score, Y_test_4baseline)
 
-            X_ref_GLC = ctgan.generate(addition_set.shape[0])
-
+            
             baseline_results, baseline_scores = baselines(
                 X_test_4baseline,
                 Y_test_4baseline,
                 samples.values,
-                addition_set,
-                X_ref_GLC,
+                reference_set,
+                reference_set,
             )
-            baseline_results["hayes"] = {"accuracy": acc, "aucroc": auc}
-            baseline_scores["hayes"] = ctgan_score
+            baseline_results["LOGAN_0"] = {"accuracy": acc, "aucroc": auc}
+            baseline_scores["LOGAN_0"] = ctgan_score
             performance_logger[f"{training_size}_{training_epochs}_{held_out_size}"][
                 f"{N_DATA_GEN}_Baselines"
             ] = baseline_results

@@ -120,13 +120,13 @@ def evaluate_performance(
             * `MIA_scores`: output scores for each attack
             * `data`: the evaluation data
         For both `MIA_performance` and `MIA_scores`, the following attacks are evaluated:
-            * "baseline_eq1"
-            * "baseline_eq2"
-            * "hayes_torch"
-            * "hilprecht"
+            * "ablated_eq1"
+            * "ablated_eq2"
+            * "LOGAN_D1"
+            * "MC"
             * "gan_leaks"
             * "gan_leaks_cal"
-            * "hayes_gan"
+            * "LOGAN_0"
             * "eq1"
             * "domias"
     """
@@ -148,16 +148,16 @@ def evaluate_performance(
         dataset[:, shifted_column][dataset[:, shifted_column] == -999.0] = 0.0
         dataset[:, shifted_column][dataset[:, shifted_column] == 999.0] = 1.0
 
-        training_set = dataset[:training_size]
+        training_set = dataset[:training_size] # membership set
         training_set = training_set[training_set[:, shifted_column] == 1]
 
-        test_set = dataset[training_size : 2 * training_size]
+        test_set = dataset[training_size : 2 * training_size] # set of non-members
         test_set = test_set[: len(training_set)]
-        addition_set = dataset[-held_out_size:]
+        reference_set = dataset[-held_out_size:]
         addition_set2 = dataset[-2 * held_out_size : -held_out_size]
 
-        addition_set_A1 = addition_set[addition_set[:, shifted_column] == 1]
-        addition_set_A0 = addition_set[addition_set[:, shifted_column] == 0]
+        addition_set_A1 = reference_set[reference_set[:, shifted_column] == 1]
+        addition_set_A0 = reference_set[reference_set[:, shifted_column] == 0]
         addition_set2_A1 = addition_set2[addition_set2[:, shifted_column] == 1]
         addition_set2_A0 = addition_set2[addition_set2[:, shifted_column] == 0]
         addition_set_A0_kept = addition_set_A0[
@@ -167,26 +167,26 @@ def evaluate_performance(
             : int(len(addition_set2_A0) * reference_kept_p)
         ]
         if reference_kept_p > 0:
-            addition_set = np.concatenate((addition_set_A1, addition_set_A0_kept), 0)
+            reference_set = np.concatenate((addition_set_A1, addition_set_A0_kept), 0)
             addition_set2 = np.concatenate((addition_set2_A1, addition_set2_A0_kept), 0)
         else:
-            addition_set = addition_set_A1
+            reference_set = addition_set_A1
             addition_set2 = addition_set2_A1
             # test_set = test_set_A1
 
         training_size = len(training_set)
-        held_out_size = len(addition_set)
+        held_out_size = len(reference_set)
 
         # hide column A
         training_set = np.delete(training_set, shifted_column, 1)
         test_set = np.delete(test_set, shifted_column, 1)
-        addition_set = np.delete(addition_set, shifted_column, 1)
+        reference_set = np.delete(reference_set, shifted_column, 1)
         addition_set2 = np.delete(addition_set2, shifted_column, 1)
         dataset = np.delete(dataset, shifted_column, 1)
     else:
         training_set = dataset[:training_size]
         test_set = dataset[training_size : 2 * training_size]
-        addition_set = dataset[-held_out_size:]
+        reference_set = dataset[-held_out_size:]
         addition_set2 = dataset[-2 * held_out_size : -held_out_size]
 
     """ 3. Synthesis with the GeneratorInferface"""
@@ -205,13 +205,15 @@ def evaluate_performance(
         samples = generator.generate(synthetic_size)
         samples_val = generator.generate(synthetic_size)
 
-        wd_n = min(len(samples), len(addition_set))
-        eval_met_on_held_out = compute_wd(samples[:wd_n], addition_set[:wd_n])
+        wd_n = min(len(samples), len(reference_set))
+        eval_met_on_held_out = compute_wd(samples[:wd_n], reference_set[:wd_n])
         performance_logger[synthetic_size]["MIA_performance"][
             "sample_quality"
         ] = eval_met_on_held_out
 
         """ 4. density estimation / evaluation of Eqn.(1) & Eqn.(2)"""
+        # First, estimate density of synthetic data
+        # BNAF for pG
         if density_estimator == "bnaf":
             _gen, model_gen = density_estimator_trainer(
                 samples.values,
@@ -219,7 +221,7 @@ def evaluate_performance(
                 samples_val.values[int(0.5 * synthetic_size) :],
             )
             _data, model_data = density_estimator_trainer(
-                addition_set,
+                reference_set,
                 addition_set2[: int(0.5 * held_out_size)],
                 addition_set2[: int(0.5 * held_out_size)],
             )
@@ -237,14 +239,15 @@ def evaluate_performance(
                 .detach()
                 .numpy()
             )
+        # KDE for pG
         elif density_estimator == "kde":
             density_gen = stats.gaussian_kde(samples.values.transpose(1, 0))
-            density_data = stats.gaussian_kde(addition_set.transpose(1, 0))
+            density_data = stats.gaussian_kde(reference_set.transpose(1, 0))
             p_G_train = density_gen(training_set.transpose(1, 0))
             p_G_test = density_gen(test_set.transpose(1, 0))
         elif density_estimator == "prior":
             density_gen = stats.gaussian_kde(samples.values.transpose(1, 0))
-            density_data = stats.gaussian_kde(addition_set.transpose(1, 0))
+            density_data = stats.gaussian_kde(reference_set.transpose(1, 0))
             p_G_train = density_gen(training_set.transpose(1, 0))
             p_G_test = density_gen(test_set.transpose(1, 0))
 
@@ -270,14 +273,14 @@ def evaluate_performance(
             X_test_4baseline,
             Y_test_4baseline,
             samples.values,
-            addition_set,
-            addition_set,  # we pass the reference dataset to GAN-leaks CAL for better stability and fairer comparison.
+            reference_set,
+            reference_set,  # we pass the reference dataset to GAN-leaks CAL for better stability and fairer comparison.
         )
 
         performance_logger[synthetic_size]["MIA_performance"] = baseline_results
         performance_logger[synthetic_size]["MIA_scores"] = baseline_scores
 
-        # Hayes GAN
+        # add LOGAN 0 baseline
         ctgan_representation = ctgan._transformer.transform(X_test_4baseline)
         ctgan_score = (
             ctgan._discriminator(
@@ -290,13 +293,13 @@ def evaluate_performance(
 
         acc, auc = compute_metrics_baseline(ctgan_score, Y_test_4baseline)
 
-        performance_logger[synthetic_size]["MIA_performance"]["hayes_gan"] = {
+        performance_logger[synthetic_size]["MIA_performance"]["LOGAN_0"] = {
             "accuracy": acc,
             "aucroc": auc,
         }
-        performance_logger[synthetic_size]["MIA_scores"]["hayes_gan"] = ctgan_score
+        performance_logger[synthetic_size]["MIA_scores"]["LOGAN_0"] = ctgan_score
 
-        # eqn1: \prop P_G(x_i)
+        # Ablated version, based on eqn1: \prop P_G(x_i)
         log_p_test = np.concatenate([p_G_train, p_G_test])
         thres = np.quantile(log_p_test, 0.5)
         auc_y = np.hstack(
@@ -315,6 +318,7 @@ def evaluate_performance(
         performance_logger[synthetic_size]["MIA_scores"]["eq1"] = log_p_test
 
         # eqn2: \prop P_G(x_i)/P_X(x_i)
+        # DOMIAS (BNAF for p_R estimation)
         if density_estimator == "bnaf":
             p_R_train = (
                 compute_log_p_x(
@@ -333,10 +337,12 @@ def evaluate_performance(
                 .numpy()
             )
             log_p_rel = np.concatenate([p_G_train - p_R_train, p_G_test - p_R_test])
+        # DOMIAS (KDE for p_R estimation)
         elif density_estimator == "kde":
             p_R_train = density_data(training_set.transpose(1, 0)) + 1e-30
             p_R_test = density_data(test_set.transpose(1, 0)) + 1e-30
             log_p_rel = np.concatenate([p_G_train / p_R_train, p_G_test / p_R_test])
+        # DOMIAS (with prior for p_R, see Appendix experiment)
         elif density_estimator == "prior":
             p_R_train = norm.pdf(training_set) + 1e-30
             p_R_test = norm.pdf(test_set) + 1e-30
@@ -351,6 +357,7 @@ def evaluate_performance(
         )
         fpr, tpr, thresholds = metrics.roc_curve(auc_y, log_p_rel, pos_label=1)
         auc = metrics.auc(fpr, tpr)
+        
         if density_estimator == "bnaf":
             performance_logger[synthetic_size]["MIA_performance"]["domias"] = {
                 "accuracy": (p_G_train - p_R_train > thres).sum(0) / training_size,
