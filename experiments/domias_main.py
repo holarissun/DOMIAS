@@ -55,14 +55,14 @@ parser.add_argument(
     "--density_estimator", type=str, default="prior", choices=["bnaf", "kde", "prior"]
 )
 parser.add_argument(
-    "--training_size_list",
+    "--mem_set_size_list",
     nargs="+",
     type=int,
     default=[50],
     help="size of training dataset",
 )
 parser.add_argument(
-    "--held_out_size_list",
+    "--reference_set_size_list",
     nargs="+",
     type=int,
     default=[1000],
@@ -181,10 +181,10 @@ def get_generator(
 
 
 """ 2. training-test-addition split"""
-for training_size in args.training_size_list:
-    for held_out_size in args.held_out_size_list:
+for mem_set_size in args.mem_set_size_list:
+    for reference_set_size in args.reference_set_size_list:
         for training_epochs in args.training_epoch_list:
-            if training_size * 2 + held_out_size >= ndata:
+            if mem_set_size * 2 + reference_set_size >= ndata:
                 continue
             """
             Process the dataset for covariant shift experiments
@@ -198,8 +198,8 @@ for training_size in args.training_size_list:
             perf = evaluate_performance(
                 generator,
                 dataset,
-                training_size,
-                held_out_size,
+                mem_set_size,
+                reference_set_size,
                 training_epochs,
                 shifted_column=args.shifted_column,
                 zero_quantile=args.zero_quantile,
@@ -211,7 +211,7 @@ for training_size in args.training_size_list:
             )
             print(
                 f"""
-                training_size = {training_size} held_out_size  = {held_out_size} training_epochs = {training_epochs}
+                mem_set_size = {mem_set_size} reference_set_size  = {reference_set_size} training_epochs = {training_epochs}
                     metrics = {perf}
             """
             )
