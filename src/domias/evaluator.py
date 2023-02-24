@@ -140,7 +140,8 @@ def evaluate_performance(
             continuous.append(1)
 
     norm = normal_func_feat(dataset, continuous)
-
+    
+    # For experiment with domain shift in reference dataset
     if shifted_column is not None:
         thres = np.quantile(dataset[:, shifted_column], zero_quantile) + 0.01
         dataset[:, shifted_column][dataset[:, shifted_column] < thres] = -999.0
@@ -174,6 +175,7 @@ def evaluate_performance(
         test_set = np.delete(test_set, shifted_column, 1)
         reference_set = np.delete(reference_set, shifted_column, 1)
         dataset = np.delete(dataset, shifted_column, 1)
+    # For all other experiments
     else:
         training_set = dataset[:training_size]
         test_set = dataset[training_size : 2 * training_size]
@@ -333,17 +335,21 @@ def evaluate_performance(
             p_R_train = norm.pdf(training_set) + 1e-30
             p_R_test = norm.pdf(test_set) + 1e-30
             log_p_rel = np.concatenate([p_G_train / p_R_train, p_G_test / p_R_test])
-
+        
+        # get MIA groundtruth labels
         thres = np.quantile(log_p_rel, 0.5)
-        auc_y = np.hstack(
+        y_groundtruth = np.hstack(
             (
                 np.array([1] * training_set.shape[0]),
                 np.array([0] * test_set.shape[0]),
             )
         )
-        fpr, tpr, thresholds = metrics.roc_curve(auc_y, log_p_rel, pos_label=1)
+        
+        # compute metrics
+        fpr, tpr, thresholds = metrics.roc_curve(y_groundtruth, log_p_rel, pos_label=1)
         auc = metrics.auc(fpr, tpr)
-
+        
+        # for accuracy, binarize predictions
         if density_estimator == "bnaf":
             performance_logger[synthetic_size]["MIA_performance"]["domias"] = {
                 "accuracy": (p_G_train - p_R_train > thres).sum(0) / training_size,
