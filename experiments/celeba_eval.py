@@ -91,9 +91,6 @@ test_set = np.load(
 reference_set = np.load(
     f"{PATH_CELEB_REPRESENTATION}/AISTATS_betavae_repres_ref_{alias}.npy"
 )[:4500]
-addition_set2 = np.load(
-    f"{PATH_CELEB_REPRESENTATION}/AISTATS_betavae_repres_ref_{alias}.npy"
-)[4500:]
 
 """ 2. training-test-addition split"""
 for training_size in args.training_size_list:
@@ -140,8 +137,8 @@ for training_size in args.training_size_list:
                 )
                 _data, model_data = density_estimator_trainer(
                     reference_set,
-                    addition_set2[: int(0.5 * held_out_size)],
-                    addition_set2[: int(0.5 * held_out_size)],
+                    reference_set[: int(0.5 * held_out_size)],
+                    reference_set[: int(0.5 * held_out_size)],
                 )
                 p_G_train = (
                     compute_log_p_x(
