@@ -10,7 +10,6 @@ import pandas as pd
 import torch
 from scipy import stats
 from scipy.stats import multivariate_normal
-from sklearn import metrics
 
 # domias absolute
 from domias.baselines import baselines, compute_metrics_baseline
@@ -69,8 +68,8 @@ class normal_func_feat:
 def evaluate_performance(
     generator: GeneratorInterface,
     dataset: np.ndarray,
-    training_size: int,
-    held_out_size: int,
+    mem_set_size: int,
+    reference_set_size: int,
     training_epochs: int = 2000,
     synthetic_sizes: list = [10000],
     density_estimator: str = "prior",
@@ -90,9 +89,9 @@ def evaluate_performance(
         dataset: int
             The evaluation dataset, used to derive the training and test datasets.
         training_size: int
-            The split for the training dataset out of `dataset`
-        held_out_size: int
-            The split for the held-out(addition) dataset out of `dataset`.
+            The split for the training (member) dataset out of `dataset`
+        reference_size: int
+            The split for the reference dataset out of `dataset`.
         training_epochs: int
             Training epochs
         synthetic_sizes: List[int]
@@ -111,7 +110,7 @@ def evaluate_performance(
         zero_quantile: float
             Threshold for shifting the column.
         reference_kept_p: float
-            Held-out dataset parameter
+            Reference dataset parameter (for distributional shift experiment)
 
     Returns:
         A dictionary with a key for each of the `synthetic_sizes` values.
@@ -140,7 +139,7 @@ def evaluate_performance(
             continuous.append(1)
 
     norm = normal_func_feat(dataset, continuous)
-    
+
     # For experiment with domain shift in reference dataset
     if shifted_column is not None:
         thres = np.quantile(dataset[:, shifted_column], zero_quantile) + 0.01
@@ -149,40 +148,41 @@ def evaluate_performance(
         dataset[:, shifted_column][dataset[:, shifted_column] == -999.0] = 0.0
         dataset[:, shifted_column][dataset[:, shifted_column] == 999.0] = 1.0
 
-        training_set = dataset[:training_size]  # membership set
-        training_set = training_set[training_set[:, shifted_column] == 1]
+        mem_set = dataset[:mem_set_size]  # membership set
+        mem_set = mem_set[mem_set[:, shifted_column] == 1]
 
-        test_set = dataset[training_size : 2 * training_size]  # set of non-members
-        test_set = test_set[: len(training_set)]
-        reference_set = dataset[-held_out_size:]
+        non_mem_set = dataset[mem_set_size : 2 * mem_set_size]  # set of non-members
+        non_mem_set = non_mem_set[: len(mem_set)]
+        reference_set = dataset[-reference_set_size:]
 
-        addition_set_A1 = reference_set[reference_set[:, shifted_column] == 1]
-        addition_set_A0 = reference_set[reference_set[:, shifted_column] == 0]
-        addition_set_A0_kept = addition_set_A0[
-            : int(len(addition_set_A0) * reference_kept_p)
+        # Used for experiment with distributional shift in reference dataset
+        reference_set_A1 = reference_set[reference_set[:, shifted_column] == 1]
+        reference_set_A0 = reference_set[reference_set[:, shifted_column] == 0]
+        reference_set_A0_kept = reference_set_A0[
+            : int(len(reference_set_A0) * reference_kept_p)
         ]
         if reference_kept_p > 0:
-            reference_set = np.concatenate((addition_set_A1, addition_set_A0_kept), 0)
+            reference_set = np.concatenate((reference_set_A1, reference_set_A0_kept), 0)
         else:
-            reference_set = addition_set_A1
-            # test_set = test_set_A1
+            reference_set = reference_set_A1
+            # non_mem_set = non_mem_set_A1
 
-        training_size = len(training_set)
-        held_out_size = len(reference_set)
+        mem_set_size = len(mem_set)
+        reference_set_size = len(reference_set)
 
         # hide column A
-        training_set = np.delete(training_set, shifted_column, 1)
-        test_set = np.delete(test_set, shifted_column, 1)
+        mem_set = np.delete(mem_set, shifted_column, 1)
+        non_mem_set = np.delete(non_mem_set, shifted_column, 1)
         reference_set = np.delete(reference_set, shifted_column, 1)
         dataset = np.delete(dataset, shifted_column, 1)
     # For all other experiments
     else:
-        training_set = dataset[:training_size]
-        test_set = dataset[training_size : 2 * training_size]
-        reference_set = dataset[-held_out_size:]
+        mem_set = dataset[:mem_set_size]
+        non_mem_set = dataset[mem_set_size : 2 * mem_set_size]
+        reference_set = dataset[-reference_set_size:]
 
     """ 3. Synthesis with the GeneratorInferface"""
-    df = pd.DataFrame(training_set)
+    df = pd.DataFrame(mem_set)
     df.columns = [str(_) for _ in range(dataset.shape[1])]
 
     # Train generator
@@ -194,82 +194,72 @@ def evaluate_performance(
             "MIA_scores": {},
             "data": {},
         }
-        samples = generator.generate(synthetic_size)
-        samples_val = generator.generate(synthetic_size)
+        synth_set = generator.generate(synthetic_size)
+        synth_val_set = generator.generate(synthetic_size)
 
-        wd_n = min(len(samples), len(reference_set))
-        eval_met_on_held_out = compute_wd(samples[:wd_n], reference_set[:wd_n])
+        wd_n = min(len(synth_set), len(reference_set))
+        eval_met_on_reference = compute_wd(synth_set[:wd_n], reference_set[:wd_n])
         performance_logger[synthetic_size]["MIA_performance"][
             "sample_quality"
-        ] = eval_met_on_held_out
+        ] = eval_met_on_reference
+
+        # get real test sets of members and non members
+        X_test = np.concatenate([mem_set, non_mem_set])
+        Y_test = np.concatenate(
+            [np.ones(mem_set.shape[0]), np.zeros(non_mem_set.shape[0])]
+        ).astype(bool)
+
+        performance_logger[synthetic_size]["data"]["Xtest"] = X_test
+        performance_logger[synthetic_size]["data"]["Ytest"] = Y_test
 
         """ 4. density estimation / evaluation of Eqn.(1) & Eqn.(2)"""
         # First, estimate density of synthetic data
         # BNAF for pG
         if density_estimator == "bnaf":
-            _gen, model_gen = density_estimator_trainer(
-                samples.values,
-                samples_val.values[: int(0.5 * synthetic_size)],
-                samples_val.values[int(0.5 * synthetic_size) :],
+            _, p_G_model = density_estimator_trainer(
+                synth_set.values,
+                synth_val_set.values[: int(0.5 * synthetic_size)],
+                synth_val_set.values[int(0.5 * synthetic_size) :],
             )
-            _data, model_data = density_estimator_trainer(reference_set)
-            p_G_train = (
-                compute_log_p_x(
-                    model_gen, torch.as_tensor(training_set).float().to(device)
-                )
+            _, p_R_model = density_estimator_trainer(reference_set)
+            logp_G_evaluated = (
+                compute_log_p_x(p_G_model, torch.as_tensor(X_test).float().to(device))
                 .cpu()
                 .detach()
                 .numpy()
             )
-            p_G_test = (
-                compute_log_p_x(model_gen, torch.as_tensor(test_set).float().to(device))
-                .cpu()
-                .detach()
-                .numpy()
-            )
+
         # KDE for pG
         elif density_estimator == "kde":
-            density_gen = stats.gaussian_kde(samples.values.transpose(1, 0))
+            density_gen = stats.gaussian_kde(synth_set.values.transpose(1, 0))
             density_data = stats.gaussian_kde(reference_set.transpose(1, 0))
-            p_G_train = density_gen(training_set.transpose(1, 0))
-            p_G_test = density_gen(test_set.transpose(1, 0))
+            logp_G_evaluated = np.log(density_gen(X_test.transpose(1, 0)))
         elif density_estimator == "prior":
-            density_gen = stats.gaussian_kde(samples.values.transpose(1, 0))
+            density_gen = stats.gaussian_kde(synth_set.values.transpose(1, 0))
             density_data = stats.gaussian_kde(reference_set.transpose(1, 0))
-            p_G_train = density_gen(training_set.transpose(1, 0))
-            p_G_test = density_gen(test_set.transpose(1, 0))
-
-        X_test_4baseline = np.concatenate([training_set, test_set])
-        Y_test_4baseline = np.concatenate(
-            [np.ones(training_set.shape[0]), np.zeros(test_set.shape[0])]
-        ).astype(bool)
-
-        performance_logger[synthetic_size]["data"]["Xtest"] = X_test_4baseline
-        performance_logger[synthetic_size]["data"]["Ytest"] = Y_test_4baseline
-
-        # build another GAN for hayes black-box
-        ctgan = CTGAN(epochs=training_epochs, pac=1)
-        samples.columns = [str(_) for _ in range(dataset.shape[1])]
-        ctgan.fit(samples)  # train a CTGAN on the generated examples
-
-        if ctgan._transformer is None or ctgan._discriminator is None:
-            raise RuntimeError()
+            logp_G_evaluated = np.log(density_gen(X_test.transpose(1, 0)))
 
         # Baselines
-
         baseline_results, baseline_scores = baselines(
-            X_test_4baseline,
-            Y_test_4baseline,
-            samples.values,
+            X_test,
+            Y_test,
+            synth_set.values,
             reference_set,
-            reference_set,  # we pass the reference dataset to GAN-leaks CAL for better stability and fairer comparison.
+            reference_set,  # we pass the reference dataset to GAN-leaks CAL for better stability and fairer comparison (compared to training additional model, as Chen et al propose).
         )
 
         performance_logger[synthetic_size]["MIA_performance"] = baseline_results
         performance_logger[synthetic_size]["MIA_scores"] = baseline_scores
 
+        # build another GAN for LOGAN 0 black-box
+        ctgan = CTGAN(epochs=training_epochs, pac=1)
+        synth_set.columns = [str(_) for _ in range(dataset.shape[1])]
+        ctgan.fit(synth_set)  # train a CTGAN on the generated examples
+
+        if ctgan._transformer is None or ctgan._discriminator is None:
+            raise RuntimeError()
         # add LOGAN 0 baseline
-        ctgan_representation = ctgan._transformer.transform(X_test_4baseline)
+        ctgan_representation = ctgan._transformer.transform(X_test)
         ctgan_score = (
             ctgan._discriminator(
                 torch.as_tensor(ctgan_representation).float().to(device)
@@ -279,7 +269,7 @@ def evaluate_performance(
             .numpy()
         )
 
-        acc, auc = compute_metrics_baseline(ctgan_score, Y_test_4baseline)
+        acc, auc = compute_metrics_baseline(ctgan_score, Y_test)
 
         performance_logger[synthetic_size]["MIA_performance"]["LOGAN_0"] = {
             "accuracy": acc,
@@ -288,82 +278,40 @@ def evaluate_performance(
         performance_logger[synthetic_size]["MIA_scores"]["LOGAN_0"] = ctgan_score
 
         # Ablated version, based on eqn1: \prop P_G(x_i)
-        log_p_test = np.concatenate([p_G_train, p_G_test])
-        thres = np.quantile(log_p_test, 0.5)
-        auc_y = np.hstack(
-            (
-                np.array([1] * training_set.shape[0]),
-                np.array([0] * test_set.shape[0]),
-            )
-        )
-        fpr, tpr, thresholds = metrics.roc_curve(auc_y, log_p_test, pos_label=1)
-        auc = metrics.auc(fpr, tpr)
+        acc, auc = compute_metrics_baseline(logp_G_evaluated, Y_test)
 
         performance_logger[synthetic_size]["MIA_performance"]["eq1"] = {
-            "accuracy": (p_G_train > thres).sum(0) / training_size,
+            "accuracy": acc,
             "aucroc": auc,
         }
-        performance_logger[synthetic_size]["MIA_scores"]["eq1"] = log_p_test
+        performance_logger[synthetic_size]["MIA_scores"]["eq1"] = logp_G_evaluated
 
         # eqn2: \prop P_G(x_i)/P_X(x_i)
         # DOMIAS (BNAF for p_R estimation)
         if density_estimator == "bnaf":
-            p_R_train = (
-                compute_log_p_x(
-                    model_data, torch.as_tensor(training_set).float().to(device)
-                )
+            logp_R_evaluated = (
+                compute_log_p_x(p_R_model, torch.as_tensor(X_test).float().to(device))
                 .cpu()
                 .detach()
                 .numpy()
             )
-            p_R_test = (
-                compute_log_p_x(
-                    model_data, torch.as_tensor(test_set).float().to(device)
-                )
-                .cpu()
-                .detach()
-                .numpy()
-            )
-            log_p_rel = np.concatenate([p_G_train - p_R_train, p_G_test - p_R_test])
+
         # DOMIAS (KDE for p_R estimation)
         elif density_estimator == "kde":
-            p_R_train = density_data(training_set.transpose(1, 0)) + 1e-30
-            p_R_test = density_data(test_set.transpose(1, 0)) + 1e-30
-            log_p_rel = np.concatenate([p_G_train / p_R_train, p_G_test / p_R_test])
+            logp_R_evaluated = np.log(density_data(X_test.transpose(1, 0)) + 1e-30)
+
         # DOMIAS (with prior for p_R, see Appendix experiment)
         elif density_estimator == "prior":
-            p_R_train = norm.pdf(training_set) + 1e-30
-            p_R_test = norm.pdf(test_set) + 1e-30
-            log_p_rel = np.concatenate([p_G_train / p_R_train, p_G_test / p_R_test])
-        
-        # get MIA groundtruth labels
-        thres = np.quantile(log_p_rel, 0.5)
-        y_groundtruth = np.hstack(
-            (
-                np.array([1] * training_set.shape[0]),
-                np.array([0] * test_set.shape[0]),
-            )
-        )
-        
-        # compute metrics
-        fpr, tpr, thresholds = metrics.roc_curve(y_groundtruth, log_p_rel, pos_label=1)
-        auc = metrics.auc(fpr, tpr)
-        
-        # for accuracy, binarize predictions
-        if density_estimator == "bnaf":
-            performance_logger[synthetic_size]["MIA_performance"]["domias"] = {
-                "accuracy": (p_G_train - p_R_train > thres).sum(0) / training_size,
-            }
-        elif density_estimator == "kde":
-            performance_logger[synthetic_size]["MIA_performance"]["domias"] = {
-                "accuracy": (p_G_train / p_R_train > thres).sum(0) / training_size
-            }
-        elif density_estimator == "prior":
-            performance_logger[synthetic_size]["MIA_performance"]["domias"] = {
-                "accuracy": (p_G_train / p_R_train > thres).sum(0) / training_size
-            }
+            logp_R_evaluated = np.log(norm.pdf(X_test) + 1e-30)
 
-        performance_logger[synthetic_size]["MIA_performance"]["domias"]["aucroc"] = auc
+        log_p_rel = logp_G_evaluated - logp_R_evaluated
+
+        acc, auc = compute_metrics_baseline(log_p_rel, Y_test)
+        performance_logger[synthetic_size]["MIA_performance"]["domias"] = {
+            "accuracy": acc,
+            "aucroc": auc,
+        }
+
         performance_logger[synthetic_size]["MIA_scores"]["domias"] = log_p_rel
 
     return performance_logger
