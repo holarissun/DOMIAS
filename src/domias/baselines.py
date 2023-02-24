@@ -48,7 +48,6 @@ def GAN_leaks_cal(X_test: np.ndarray, X_G: np.ndarray, X_ref: np.ndarray) -> np.
     return scores
 
 
-
 def LOGAN_D1(X_test: np.ndarray, X_G: np.ndarray, X_ref: np.ndarray) -> np.ndarray:
     num = min(X_G.shape[0], X_ref.shape[0])
 
