@@ -68,14 +68,14 @@ For each `synthetic_sizes` value, the dictionary contains the keys:
  - `data`: the evaluation data
 
  For both `MIA_performance` and `MIA_scores`, the following attacks are evaluated:
- - "ablated_eq1" (Eq.1 (BNAF))
+ - "ablated_eq1" (Eq.1 (KDE))
  - "ablated_eq2" (DOMIAS (KDE))
  - "LOGAN_D1"
  - "MC"
  - "gan_leaks"
  - "gan_leaks_cal"
  - "LOGAN_0"
- - "eq1"
+ - "eq1" (Eq. 1 (BNAF))
  - "domias"
 
 ## Sample usage
