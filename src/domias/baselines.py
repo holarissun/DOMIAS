@@ -7,7 +7,6 @@ import torch
 import torch.nn.functional as F
 from scipy import stats
 from sklearn.metrics import accuracy_score, roc_auc_score
-from sklearn.neural_network import MLPClassifier
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -47,7 +46,6 @@ def GAN_leaks_cal(X_test: np.ndarray, X_G: np.ndarray, X_ref: np.ndarray) -> np.
             scores[i]
         ), f"Found inf: -d_min(x, X_G) = {-d_min(x, X_G)} d_min(x, X_ref) = {d_min(x, X_ref)}"
     return scores
-
 
 
 def LOGAN_D1(X_test: np.ndarray, X_G: np.ndarray, X_ref: np.ndarray) -> np.ndarray:
@@ -140,7 +138,7 @@ def baselines(
     sample_weight: Optional[np.ndarray] = None,
 ) -> Tuple[dict, dict]:
     score = {}
-    score["baseline_eq1"], score["baseline_eq2"] = kde_baseline(X_test, X_G, X_ref)
+    score["ablated_eq1"], score["ablated_eq2"] = kde_baseline(X_test, X_G, X_ref)
     score["LOGAN_D1"] = LOGAN_D1(X_test, X_G, X_ref)
     score["MC"] = MC(X_test, X_G)
     score["gan_leaks"] = GAN_leaks(X_test, X_G)
