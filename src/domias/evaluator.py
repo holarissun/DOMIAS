@@ -222,7 +222,7 @@ def evaluate_performance(
                 synth_val_set.values[int(0.5 * synthetic_size) :],
             )
             _, p_R_model = density_estimator_trainer(reference_set)
-            logp_G_evaluated = (
+            p_G_evaluated = np.exp(
                 compute_log_p_x(p_G_model, torch.as_tensor(X_test).float().to(device))
                 .cpu()
                 .detach()
@@ -233,11 +233,11 @@ def evaluate_performance(
         elif density_estimator == "kde":
             density_gen = stats.gaussian_kde(synth_set.values.transpose(1, 0))
             density_data = stats.gaussian_kde(reference_set.transpose(1, 0))
-            logp_G_evaluated = np.log(density_gen(X_test.transpose(1, 0)))
+            p_G_evaluated = density_gen(X_test.transpose(1, 0))
         elif density_estimator == "prior":
             density_gen = stats.gaussian_kde(synth_set.values.transpose(1, 0))
             density_data = stats.gaussian_kde(reference_set.transpose(1, 0))
-            logp_G_evaluated = np.log(density_gen(X_test.transpose(1, 0)))
+            p_G_evaluated = density_gen(X_test.transpose(1, 0))
 
         # Baselines
         baseline_results, baseline_scores = baselines(
@@ -278,40 +278,40 @@ def evaluate_performance(
         performance_logger[synthetic_size]["MIA_scores"]["LOGAN_0"] = ctgan_score
 
         # Ablated version, based on eqn1: \prop P_G(x_i)
-        acc, auc = compute_metrics_baseline(logp_G_evaluated, Y_test)
+        acc, auc = compute_metrics_baseline(p_G_evaluated, Y_test)
 
         performance_logger[synthetic_size]["MIA_performance"]["eq1"] = {
             "accuracy": acc,
             "aucroc": auc,
         }
-        performance_logger[synthetic_size]["MIA_scores"]["eq1"] = logp_G_evaluated
+        performance_logger[synthetic_size]["MIA_scores"]["eq1"] = p_G_evaluated
 
         # eqn2: \prop P_G(x_i)/P_X(x_i)
         # DOMIAS (BNAF for p_R estimation)
         if density_estimator == "bnaf":
-            logp_R_evaluated = (
+            p_R_evaluated = np.exp(
                 compute_log_p_x(p_R_model, torch.as_tensor(X_test).float().to(device))
                 .cpu()
                 .detach()
                 .numpy()
-            )
+            ) + 1e-30
 
         # DOMIAS (KDE for p_R estimation)
         elif density_estimator == "kde":
-            logp_R_evaluated = np.log(density_data(X_test.transpose(1, 0)) + 1e-30)
+            p_R_evaluated = density_data(X_test.transpose(1, 0)) + 1e-30
 
         # DOMIAS (with prior for p_R, see Appendix experiment)
         elif density_estimator == "prior":
-            logp_R_evaluated = np.log(norm.pdf(X_test) + 1e-30)
+            p_R_evaluated = norm.pdf(X_test) + 1e-30
 
-        log_p_rel = logp_G_evaluated - logp_R_evaluated
+        p_rel = p_G_evaluated / p_R_evaluated
 
-        acc, auc = compute_metrics_baseline(log_p_rel, Y_test)
+        acc, auc = compute_metrics_baseline(p_rel, Y_test)
         performance_logger[synthetic_size]["MIA_performance"]["domias"] = {
             "accuracy": acc,
             "aucroc": auc,
         }
 
-        performance_logger[synthetic_size]["MIA_scores"]["domias"] = log_p_rel
+        performance_logger[synthetic_size]["MIA_scores"]["domias"] = p_rel
 
     return performance_logger
