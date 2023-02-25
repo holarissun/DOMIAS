@@ -52,21 +52,21 @@ parser.add_argument(
     "--epsilon_adsgan", type=float, default=0.0, help="hyper-parameter in ads-gan"
 )
 parser.add_argument(
-    "--density_estimator", type=str, default="prior", choices=["bnaf", "kde", "prior"]
+    "--density_estimator", type=str, default="bnaf", choices=["bnaf", "kde", "prior"]
 )
 parser.add_argument(
     "--mem_set_size_list",
     nargs="+",
     type=int,
     default=[50],
-    help="size of training dataset",
+    help="size of generative training dataset (members)",
 )
 parser.add_argument(
     "--reference_set_size_list",
     nargs="+",
     type=int,
     default=[1000],
-    help="size of held-out dataset",
+    help="size of reference dataset",
 )
 parser.add_argument(
     "--training_epoch_list",
