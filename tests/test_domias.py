@@ -90,15 +90,15 @@ def get_generator(
 
 @pytest.mark.parametrize("dataset_name", ["housing", "SynthGaussian"])
 @pytest.mark.parametrize("method", ["TVAE", "CTGAN", "KDE"])
-@pytest.mark.parametrize("training_size", [30])
-@pytest.mark.parametrize("held_out_size", [30])
+@pytest.mark.parametrize("mem_set_size", [30])
+@pytest.mark.parametrize("reference_set_size", [30])
 @pytest.mark.parametrize("training_epochs", [100])
 @pytest.mark.parametrize("density_estimator", ["prior", "kde", "bnaf"])
 def test_sanity(
     dataset_name: str,
     method: str,
-    training_size: int,
-    held_out_size: int,
+    mem_set_size: int,
+    reference_set_size: int,
     training_epochs: int,
     density_estimator: str,
 ) -> None:
@@ -111,8 +111,8 @@ def test_sanity(
     perf = evaluate_performance(
         generator,
         dataset,
-        training_size,
-        held_out_size,
+        mem_set_size,
+        reference_set_size,
         training_epochs=training_epochs,
         synthetic_sizes=[100],
         density_estimator=density_estimator,
