@@ -298,18 +298,17 @@ def evaluate_performance(
                     .detach()
                     .numpy()
                 )
-                + 1e-30
             )
 
         # DOMIAS (KDE for p_R estimation)
         elif density_estimator == "kde":
-            p_R_evaluated = density_data(X_test.transpose(1, 0)) + 1e-30
+            p_R_evaluated = density_data(X_test.transpose(1, 0))
 
         # DOMIAS (with prior for p_R, see Appendix experiment)
         elif density_estimator == "prior":
-            p_R_evaluated = norm.pdf(X_test) + 1e-30
+            p_R_evaluated = norm.pdf(X_test)
 
-        p_rel = p_G_evaluated / p_R_evaluated
+        p_rel = p_G_evaluated / (p_R_evaluated + 1e-10)
 
         acc, auc = compute_metrics_baseline(p_rel, Y_test)
         performance_logger[synthetic_size]["MIA_performance"]["domias"] = {
