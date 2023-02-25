@@ -38,7 +38,7 @@ The supported arguments for `evaluate_performance` are:
   mem_set_size: int
       The split for the training dataset out of `dataset`
   reference_set_size: int
-      The split for the held-out(addition) dataset out of `dataset`.
+      The split for the reference dataset out of `dataset`.
   training_epochs: int
       Training epochs
   synthetic_sizes: List[int]
