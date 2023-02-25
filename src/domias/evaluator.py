@@ -289,12 +289,17 @@ def evaluate_performance(
         # eqn2: \prop P_G(x_i)/P_X(x_i)
         # DOMIAS (BNAF for p_R estimation)
         if density_estimator == "bnaf":
-            p_R_evaluated = np.exp(
-                compute_log_p_x(p_R_model, torch.as_tensor(X_test).float().to(device))
-                .cpu()
-                .detach()
-                .numpy()
-            ) + 1e-30
+            p_R_evaluated = (
+                np.exp(
+                    compute_log_p_x(
+                        p_R_model, torch.as_tensor(X_test).float().to(device)
+                    )
+                    .cpu()
+                    .detach()
+                    .numpy()
+                )
+                + 1e-30
+            )
 
         # DOMIAS (KDE for p_R estimation)
         elif density_estimator == "kde":
