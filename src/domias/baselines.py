@@ -34,13 +34,17 @@ def GAN_leaks(X_test: np.ndarray, X_G: np.ndarray) -> np.ndarray:
     return scores
 
 
+def sigmoid(x: np.ndarray) -> np.ndarray:
+    return 1 / (1 + np.exp(-x))
+
+
 def GAN_leaks_cal(X_test: np.ndarray, X_G: np.ndarray, X_ref: np.ndarray) -> np.ndarray:
     # Actually, they retrain a generative model to sample X_ref from.
     # This doesn't seem necessary to me and creates an additional, unnecessary
     # dependence on (and noise from) whatever model is used
     scores = np.zeros(X_test.shape[0])
     for i, x in enumerate(X_test):
-        scores[i] = np.exp(-d_min(x, X_G) + d_min(x, X_ref))
+        scores[i] = sigmoid(-(d_min(x, X_G) - d_min(x, X_ref)))
 
         assert not np.isinf(
             scores[i]
